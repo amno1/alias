@@ -1,0 +1,340 @@
+One unique feature of EmacsLisp is their alias concept. They have defalias and defvaralias, two functions which create links between symbol slots.
+
+If we look at defvaralias, it creates link between variable slots of two symbols. However there are some slight intricacies in how it works. For the firs, and the most important, from the docs:
+
+    (defvaralias NEW-ALIAS BASE-VARIABLE &optional DOCSTRING)
+
+    Make NEW-ALIAS a variable alias for symbol BASE-VARIABLE.
+    Aliased variables always have the same value; setting one sets the other.
+    Third arg DOCSTRING, if non-nil, is documentation for NEW-ALIAS.  If it is
+    omitted or nil, NEW-ALIAS gets the documentation string of BASE-VARIABLE,
+    or of the variable at the end of the chain of aliases, if BASE-VARIABLE is
+    itself an alias.  If NEW-ALIAS is bound, and BASE-VARIABLE is not,
+    then the value of BASE-VARIABLE is set to that of NEW-ALIAS.
+    The return value is BASE-VARIABLE.
+
+The most important part is if course this:
+
+> Aliased variables always have the same value; setting one sets the other.
+
+which is the reason why they exist.
+
+Not everything is documented, so for my own sanity here are few from GNU Emacs
+
+** 1. Base variable is defined:
+
+#+begin_src emacs-lisp :tangle no
+(defvar base 'base)
+(defvaralias 'b 'base)
+#+end_src
+
+ELISP> b
+base
+
+ELISP> (setf base "base")
+"base"
+
+ELISP> b
+"base"
+
+ELISP> (setf b 'b)
+b
+
+ELISP> b
+b
+
+ELISP> base
+b
+
+** 2. Base variable not defined
+
+ELISP> (defvaralias 'q 'qux)
+qux
+
+ELISP> q
+Debugger entered--Lisp error: (void-variable q)
+
+ELISP> qux
+Debugger entered--Lisp error: (void-variable qux)
+
+ELISP> (setf q 'q)
+q
+
+ELISP> qux
+q
+
+
+** 3. Alias is declared automatically to be a special variable
+ELISP> (special-variable-p 'q)
+t
+
+ELISP> (special-variable-p 'qux)
+t
+
+ELISP> (let ((some-symbol (make-symbol "something")))
+         (setf some-symbol 'some-symbol)
+         (defvaralias 's 'something))
+something
+
+ELISP> (special-variable-p 'some-symbol)
+t
+
+ELISP> (special-variable-p 's)
+t
+
+ELISP> s
+some-symbol
+
+ELISP> some-symbol
+Debugger entered--Lisp error: (void-variable some-symbol)
+
+Obviosly setting an alias to a lexical variable is meaningless since the lexical
+context is lost, but basically says that lexical variables are global defvars.
+
+** 4. Defvaring a defaliased variable or base variable have no effect on either alias or base variable
+ELISP> (defvaralias 'bar 'foo)
+foo
+
+ELISP> bar
+bar
+
+ELISP> foo
+bar
+
+ELISP> (defvar bar "bar")
+bar
+
+ELISP> bar
+bar
+
+ELISP> foo
+bar
+
+ELISP> (defvar foo "foo")
+foo
+
+ELISP> foo
+bar
+
+ELISP> bar
+bar
+
+** 5. Aliases are used just like ordinary symbols, i.e. no special API to manipulate their slots
+
+* CommonLisp (sbcl)
+
+Is it possible to re-create similar functionality in CL, and how do we do?
+
+Before looking at that, I think we should also think about do we really need it? My answer is a bit agnostic, I don't really
+know, but looking at the canonical usage of defalias in EmacsLisp, I don't think we need it for those cases.
+
+1. Introducing symbols into the environment
+
+   Notably defmacro and defun forms in EmacsLisp are implemented on top of defalias. Beside creating a link between two
+   symbols, defalias in Emacs can also take a symbol and a lambda, and create association between a symbol a function
+   definition.
+
+2. Rename symbols to simulate packages
+
+   EmacsLisp does not have packages or any kind of modules. To simulate packages, symbols belonging to a "package" are named with a common prefix. To bring in symbols from "other namespace", they do use
+   symbol renaming via aliases. For example to simulate 'cl-' package, they do use alisases to a bunch of symbols already definted in EmacsLisp. For example cadr, cddr, cadar etc are alised as cl-cadr,
+   cl-cadar etc. In CommonLisp those would be typically imported into a package and re-exported, and we would use something like cl:cadr, cl:cadar etc.
+
+   Sometimes it is desirable to choose a shorter name, or to choose a more suitable name for some symbol. For example Calc "package", contains a bunch of mathematical funcions with relatively long names and
+   starting with capital letter. These are renamed to slightly more convenient names, for example: Math-vectorp -> math-vectorp. There they also rename bunch of ordinary elisp functions like natnump, to
+   bring them into "math-" namespace: natnump -> math->natnump.
+
+3. Renaming symbols for obsolition
+      
+   Another reson for renaming is obsoleting functions and variables. Sometimes a more suitable name is desirable, and
+   sometimes a better functionality is introduced or whatever reason there might be.In CommonLisp we can do that via compiler
+   macros for functions and for variables we can simply rename them with symbol macros. I don't think we really need those.
+
+Those are use-cases for defalias and defvaralias, I have seen in EmacsLisp. Perhaps I have missed some other valid use-case, in that case I am happy to hear about it.
+
+I believe there is an interesting use-case for renaming symobls as found in other languages, Pyhon and JavaScript, being two cases. For example, in Python: from some-package import some-function, which let us use 'some-function' without typing the prefix. In CommonLisp there is an interesting package [[https://github.com/Gleefre/symbol-links][GitHub - Gleefre/symbol-links: symbol-links]] which enables something similar as in Python. In Elisp, that would be possible, but since everything is in a global namespace, it is probably not advisable since it would easily lead to name collisions.
+
+Tim Bradshaw has [[https://github.com/tfeb/conduit-packages][GitHub - Conduit packages for Common Lisp]], which also helps in the domain of renaming symbols from other packages.
+
+Why would I want to implement defalias/defvaralias then? Two reasons: learning experience and curiosity, and the second one is
+to be able to load in at least some Elisp code without patching it and modifiying it. Whether I will succeed with it or not, I
+don't know yet. Thus far, it is just small experiments.
+
+* Current implementations
+
+Aside of symbol-links and conduit-packages, I have seen some different implementations of defalias, one taken by [[https://github.com/ruricolist/serapeum/blob/master/definitions.lisp#L151-L192][Serapeum]] or [[https://github.com/qitab/ace.core/blob/master/macro.lisp#L203-L213][Ace.core]]. I have not seen any implementation of defvaralias online. Both Serapum ones and the one in Ace.core
+suffer from the same problem: they are taking the function definition at the compile time, and use that for rest of the life of an alias object. However, in Elisp an alias is actually a pointer between two symbol slots. If we change function definition of alised symbol, it is reflected in alias as well. Changing function slot of alias is actually changing the
+function slot of the aliased object. Closest in CommonLisp is to say that the function slot of the alias is a place which expands to the function slot of aliased symbol.
+
+We can easily check this:
+
+- CommonLisp:
+
+CL-USER> (ql:quickload :serapeum)
+To load "serapeum":
+  Load 1 ASDF system:
+    serapeum
+; Loading "serapeum"
+.
+(:SERAPEUM)
+
+CL-USER> (use-package :serapeum)
+T
+
+CL-USER> (defun foo nil "foo")
+FOO
+
+CL-USER> (defalias f #'foo)
+#<FUNCTION FOO>
+
+CL-USER> (f)
+"foo"
+
+CL-USER> (defun foo nil "bar")
+WARNING: redefining COMMON-LISP-USER::FOO in DEFUN
+FOO
+
+CL-USER> (foo)
+"bar"
+
+CL-USER> (f)
+"foo"
+
+
+- Emacs:
+
+ELISP> (defun foo nil "foo")
+foo
+
+ELISP> (defalias 'f 'foo)
+f
+
+ELISP> (foo)
+"foo"
+
+ELISP> (f)
+"foo"
+
+ELISP> (defun foo nil "bar")
+foo
+
+ELISP> (foo)
+"bar"
+
+ELISP> (f)
+"bar"
+
+Defalias macro in Ace.core suffers from the same problem.
+
+This could be solved in different ways. The simplest naive and expensive one is to lookup aliased function slot at the runtime, and call that object:
+
+#+begin_src lisp
+(defun defalias (symbol target)
+  (when (functionp target)
+    (setf target
+          (caddr
+           (multiple-value-list
+            (function-lambda-expression target)))))
+
+  (setf (symbol-function symbol)
+        #'(lambda (&rest args)
+            (declare (ignore args))
+            (let* ((p (symbol-package target))
+                   (s (find-symbol (symbol-name target) p)))
+
+              (unless p (error "Package: ~S is not found" p))
+              (unless s (error "Symbol: ~S is not found" s))
+
+              (let* ((f (symbol-function s))
+                     (a (sb-kernel:%fun-lambda-list f)))
+
+                (if a
+                    (apply f args)
+                    (funcall f))))))
+  target)
+#+end_src
+
+As a bonus of being expensive, 'describe' function can not lookup the lambda list correctly for alias, since it will lookup the lambda list of the generic lambda (&rest args). Even worse, we are not even done yet!
+
+In EmacsLisp it is fully legal to take a function object of a special operator or a macro. Not so in CommonLisp. As a matter of fact, they don't really have an 1:1 equivalent to special operators in Elisp at all. This due to the fact that
+Elisp is implemented in C and was interpretted (and still is in a way) unitl they started using GCC to compile Elisp. While there sure is a "byte compiler", it should be rather called "byte interpretter". Emacs bytecode is valid Elisp and is fed back to the lisp reader and executed as ordinary elisp. In essence, elisp bytecode is a more efficient rewrite of lisp, where
+anything that can be pre-computed, like macroexpansions and constanst values, is pre-computed. They also use more efficient storage for byte code (vectors), than for the source code (lists).
+
+The point being, calling special operators like 'if' or 'and' is equivalent to calling a C function exported to Lisp. Calls to macros are calls to expanded functions stored as bytecode in elc files, or if interpretted, the macro is expanded and called as normal function. That makes it possible to treat the seemingly special operator or a macro as function object:
+
+#+begin_src emacs-lisp :tangle yes
+ELISP> (defvar iff nil)
+iff
+
+ELISP> (setf (symbol-function 'iff) (symbol-function 'if))
+#<subr if>
+
+ELISP> (iff t 1)
+1
+ (#o1, #x1, ?\C-a)
+#+end_src
+
+This is not possible in CommonLisp:
+
+#+begin_src emacs-lisp :tangle yes
+CL-USER> (defvar iff nil)
+IFF
+CL-USER> (setf (symbol-function 'iff) (symbol-function 'if))
+
+#<FUNCTION (:SPECIAL IF) {1100056AAB}> is not acceptable to (SETF SYMBOL-FUNCTION).
+   [Condition of type SB-INT:SIMPLE-REFERENCE-ERROR]
+#+end_src
+
+The standard [[https://www.lispworks.com/documentation/HyperSpec/Body/s_fn.htm][prohibits it explicitly]]:
+
+ "Specifically, it is an error to use function on a symbol that denotes a macro or special form."
+
+Which is understandable considering that special operators can get compiled to pure assembly without any function calls involved and macros are source code generators. As a result, macros generate source code which has to be compiled before it can be used.
+
+So how do we solve it dynamically?
+
+I don't think we do. That would probably involve recompiling some source on every call. That seems like even worse
+than writing an interpretter. To be honest, I think it is a dead end, and the solution is to be found elsewhere. Perhaps
+there is a way, but my current CommonLisp foo is not good enough, at least I don't know how to do it dynamically. As a
+last illustration, here is a version that pretends to by dynamic to an extent, however,if one redefine a base symbol from
+a function to a macro and vice-versa, it won't work:
+
+#+begin_src emacs-lisp
+(defun defalias (symbol target &optional docs)
+  (when (functionp target)
+    (setf target
+          (caddr
+           (multiple-value-list
+            (function-lambda-expression target)))))
+  (cond
+    ((or (special-operator-p target)
+         (macro-function target))
+     (eval `(defmacro ,symbol (&body body) (list* ',target body))))
+    ((fdefinition target)
+     (when (or (special-operator-p symbol)
+               (macro-function symbol))
+       (fmakunbound symbol))
+     (setf (symbol-function symbol)
+           #'(lambda (&rest args)
+               (let* ((p (symbol-package target))
+                      (s (find-symbol (symbol-name target) p)))
+                 (unless p (error "Package: ~S is not found" p))
+                 (unless s (error "Symbol: ~S is not found" s))
+                 (cond
+                   ((special-operator-p s)
+                    (format t "Cannot call special operators dynamically~%"))
+                   ((macro-function s)
+                    (format t "Cannot call macros dynamically~%"))
+                   (t                    
+                    (if args
+                        (apply (symbol-function s) args)
+                        (funcall (symbol-function s))))))))))
+  (setf (documentation symbol 'function)
+        (or docs (documentation target 'function)))
+  target)
+#+end_src
+
+That also lacks circularity check, so don't use it, just an illustration of how far can we emulate, and how easy it to break it, as described above. Fortunately, as said in the beginning, I don't think we need a full imitation of defalias
+in CommonLisp. Alias for macros and special operators unfortunately require eval. I am not sure how to write it without eval. [[https://gitlab.com/sasanidas/cedar/-/blob/master/src/core/elisp.lisp?ref_type=heads#L217][The definition]] taken from Cedar.
+
+Todo defvar
