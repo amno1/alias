@@ -334,7 +334,8 @@ a function to a macro and vice-versa, it won't work:
   target)
 #+end_src
 
-That also lacks circularity check, so don't use it, just an illustration of how far can we emulate, and how easy it to break it, as described above. Fortunately, as said in the beginning, I don't think we need a full imitation of defalias
-in CommonLisp. Alias for macros and special operators unfortunately require eval. I am not sure how to write it without eval. [[https://gitlab.com/sasanidas/cedar/-/blob/master/src/core/elisp.lisp?ref_type=heads#L217][The definition]] taken from Cedar.
+That also lacks circularity check.
+
+Don't use it, it is just an illustration of how far can we emulate Elisp defalias, and how easy it is to break it, as described above. Fortunately, as said in the beginning, I don't think we need a full imitation of defalias in CommonLisp. Alias for macros and special operators [[https://gitlab.com/sasanidas/cedar/-/blob/master/src/core/elisp.lisp?ref_type=heads#L217][taken from Cedar]] and unfortunately require eval. I am not sure how to write it without eval.
 
 Todo defvar
