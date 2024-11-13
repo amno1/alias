@@ -244,9 +244,14 @@ That also lacks circularity check.
 Don't use it, it is just an illustration of how far can we emulate Elisp defalias, and how easy it is to break it, as described above. Fortunately, as said in the beginning, I don't think we need a full imitation of defalias in CommonLisp. Alias for macros and special operators [[https://gitlab.com/sasanidas/cedar/-/blob/master/src/core/elisp.lisp?ref_type=heads#L217][taken from Cedar]] and unfortunately require eval. I am not sure how to write it without eval.
 
 Defvar currently simplistic via symbol-macros. Turns it is possible to set variable documentation for a
-symbol macro indpendent of documentation for its expansion, which means symbol macros already act as Elisp defvaralias.
+symbol macro indpendent of documentation for its expansion, which means symbol macros already act as Elisp defvaralias in
+a way. However the illusion is possible to maintain only before a symbol macro (the alias) is defined. After the definition,
+the system will only see the expansion, so further manipulation of other symbol slots in alias will be impossible. However,
+this is not how variable aliases are typically used in Eisp, so it will have to be good enough.
 
-
+In the above, I was only interested in the mechanism on which to implement this, I haven't implemented the details. Obviously,
+a circularity check is needed, but since I disslike the implementation of both, I'll leave this as-is for the now. The goal
+is to see if there is a better way to implement the def/var aliases in CL.
 
 
 * Notes
