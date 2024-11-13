@@ -27,9 +27,31 @@
 
 (in-package :cl-user)
 
-(defvar alias-table (make-hash-table))
+(defmacro while (test &rest body)
+  `(cl:do () ((cl:not ,test) nil) ,@body))
+
+(defun special-variable-p (symbol)
+    (multiple-value-bind (special ignore1 ignore2)
+        (sb-cltl2:variable-information symbol)
+      (declare (ignore ignore1 ignore2))
+      (eq :special special)))
+
+(defun symbol-macro-p (symbol)
+  "Return T or NIL as the first value and as the second value,
+   if symbol is a symbol-macro the expanded symbol, otherwise NIL."
+  (multiple-value-bind (expansion result) (macroexpand-1 symbol)
+    (when result expansion)))
+
+(defun defvaralias (symbol target &optional docs)
+  (check-type symbol symbol)
+  (check-type target symbol)
+  (setf (documentation symbol 'variable)
+        (or docs (documentation target 'variable)))
+  (eval `(define-symbol-macro ,symbol ,target)))
 
 (defun defalias (symbol target &optional docs)
+  (check-type symbol symbol)
+  (check-type target symbol)
   (when (functionp target)
     (setf target
           (caddr

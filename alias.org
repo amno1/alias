@@ -243,7 +243,10 @@ That also lacks circularity check.
 
 Don't use it, it is just an illustration of how far can we emulate Elisp defalias, and how easy it is to break it, as described above. Fortunately, as said in the beginning, I don't think we need a full imitation of defalias in CommonLisp. Alias for macros and special operators [[https://gitlab.com/sasanidas/cedar/-/blob/master/src/core/elisp.lisp?ref_type=heads#L217][taken from Cedar]] and unfortunately require eval. I am not sure how to write it without eval.
 
-Todo defvar
+Defvar currently simplistic via symbol-macros. Turns it is possible to set variable documentation for a
+symbol macro indpendent of documentation for its expansion, which means symbol macros already act as Elisp defvaralias.
+
+
 
 
 * Notes
