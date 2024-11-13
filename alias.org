@@ -1,5 +1,6 @@
-One unique feature of EmacsLisp is their alias concept. They have defalias and defvaralias, two functions which create links between symbol slots.
+* About aliases in Emacs
 
+Alias concept is relatively unique feature of EmacsLisp, yet not. They have defalias and defvaralias, two functions which create links between symbol slots.
 If we look at defvaralias, it creates link between variable slots of two symbols. However there are some slight intricacies in how it works. For the firs, and the most important, from the docs:
 
     (defvaralias NEW-ALIAS BASE-VARIABLE &optional DOCSTRING)
@@ -17,113 +18,12 @@ The most important part is if course this:
 
 > Aliased variables always have the same value; setting one sets the other.
 
-which is the reason why they exist.
-
-Not everything is documented, so for my own sanity here are few from GNU Emacs
-
-** 1. Base variable is defined:
-
-#+begin_src emacs-lisp :tangle no
-(defvar base 'base)
-(defvaralias 'b 'base)
-#+end_src
-
-ELISP> b
-base
-
-ELISP> (setf base "base")
-"base"
-
-ELISP> b
-"base"
-
-ELISP> (setf b 'b)
-b
-
-ELISP> b
-b
-
-ELISP> base
-b
-
-** 2. Base variable not defined
-
-ELISP> (defvaralias 'q 'qux)
-qux
-
-ELISP> q
-Debugger entered--Lisp error: (void-variable q)
-
-ELISP> qux
-Debugger entered--Lisp error: (void-variable qux)
-
-ELISP> (setf q 'q)
-q
-
-ELISP> qux
-q
-
-
-** 3. Alias is declared automatically to be a special variable
-ELISP> (special-variable-p 'q)
-t
-
-ELISP> (special-variable-p 'qux)
-t
-
-ELISP> (let ((some-symbol (make-symbol "something")))
-         (setf some-symbol 'some-symbol)
-         (defvaralias 's 'something))
-something
-
-ELISP> (special-variable-p 'some-symbol)
-t
-
-ELISP> (special-variable-p 's)
-t
-
-ELISP> s
-some-symbol
-
-ELISP> some-symbol
-Debugger entered--Lisp error: (void-variable some-symbol)
-
-Obviosly setting an alias to a lexical variable is meaningless since the lexical
-context is lost, but basically says that lexical variables are global defvars.
-
-** 4. Defvaring a defaliased variable or base variable have no effect on either alias or base variable
-ELISP> (defvaralias 'bar 'foo)
-foo
-
-ELISP> bar
-bar
-
-ELISP> foo
-bar
-
-ELISP> (defvar bar "bar")
-bar
-
-ELISP> bar
-bar
-
-ELISP> foo
-bar
-
-ELISP> (defvar foo "foo")
-foo
-
-ELISP> foo
-bar
-
-ELISP> bar
-bar
-
-** 5. Aliases are used just like ordinary symbols, i.e. no special API to manipulate their slots
-
-* CommonLisp (sbcl)
+which is the reason why they exist. In essence these are just pointers, not unlike cons pointers. It is just that they
+let us use symbol slots as pointers to a value or function in other symbol.
 
 Is it possible to re-create similar functionality in CL, and how do we do?
+
+* Do we need them in CommonLisp
 
 Before looking at that, I think we should also think about do we really need it? My answer is a bit agnostic, I don't really
 know, but looking at the canonical usage of defalias in EmacsLisp, I don't think we need it for those cases.
@@ -136,13 +36,16 @@ know, but looking at the canonical usage of defalias in EmacsLisp, I don't think
 
 2. Rename symbols to simulate packages
 
-   EmacsLisp does not have packages or any kind of modules. To simulate packages, symbols belonging to a "package" are named with a common prefix. To bring in symbols from "other namespace", they do use
-   symbol renaming via aliases. For example to simulate 'cl-' package, they do use alisases to a bunch of symbols already definted in EmacsLisp. For example cadr, cddr, cadar etc are alised as cl-cadr,
-   cl-cadar etc. In CommonLisp those would be typically imported into a package and re-exported, and we would use something like cl:cadr, cl:cadar etc.
+   EmacsLisp does not have packages or any kind of modules. To simulate packages, symbols belonging to a "package" are named
+   with a common prefix. To bring in symbols from "other namespace", they do use symbol renaming via aliases. For example to
+   simulate 'cl-' package, they do use alisases to a bunch of symbols already definted in EmacsLisp. For example cadr, cddr,
+   cadar etc are alised as cl-cadr, cl-cadar etc. In CommonLisp those would be typically imported into a package and
+   re-exported, and we would use something like cl:cadr, cl:cadar etc.
 
-   Sometimes it is desirable to choose a shorter name, or to choose a more suitable name for some symbol. For example Calc "package", contains a bunch of mathematical funcions with relatively long names and
-   starting with capital letter. These are renamed to slightly more convenient names, for example: Math-vectorp -> math-vectorp. There they also rename bunch of ordinary elisp functions like natnump, to
-   bring them into "math-" namespace: natnump -> math->natnump.
+   Sometimes it is desirable to choose a shorter name, or to choose a more suitable name for some symbol. For example Calc
+   "package", contains a bunch of mathematical funcions with relatively long names and starting with capital letter. These
+   are renamed to slightly more convenient names, for example: Math-vectorp -> math-vectorp. There they also rename bunch of
+   ordinary elisp functions like natnump, to bring them into "math-" namespace: natnump -> math->natnump.
 
 3. Renaming symbols for obsolition
       
@@ -224,9 +127,11 @@ ELISP> (foo)
 ELISP> (f)
 "bar"
 
-Defalias macro in Ace.core suffers from the same problem.
+Defalias macro in Ace.core have the same problem.
 
-This could be solved in different ways. The simplest naive and expensive one is to lookup aliased function slot at the runtime, and call that object:
+* An example implementation and problems
+
+The simplest naive and expensive one is to lookup aliased function slot at the runtime, and call that object:
 
 #+begin_src lisp
 (defun defalias (symbol target)
@@ -339,3 +244,108 @@ That also lacks circularity check.
 Don't use it, it is just an illustration of how far can we emulate Elisp defalias, and how easy it is to break it, as described above. Fortunately, as said in the beginning, I don't think we need a full imitation of defalias in CommonLisp. Alias for macros and special operators [[https://gitlab.com/sasanidas/cedar/-/blob/master/src/core/elisp.lisp?ref_type=heads#L217][taken from Cedar]] and unfortunately require eval. I am not sure how to write it without eval.
 
 Todo defvar
+
+
+* Notes
+
+Not everything is documented, so for my own sanity here are few from GNU Emacs
+
+** 1. Base variable is defined:
+
+#+begin_src emacs-lisp :tangle no
+(defvar base 'base)
+(defvaralias 'b 'base)
+#+end_src
+
+ELISP> b
+base
+
+ELISP> (setf base "base")
+"base"
+
+ELISP> b
+"base"
+
+ELISP> (setf b 'b)
+b
+
+ELISP> b
+b
+
+ELISP> base
+b
+
+** 2. Base variable not defined
+
+ELISP> (defvaralias 'q 'qux)
+qux
+
+ELISP> q
+Debugger entered--Lisp error: (void-variable q)
+
+ELISP> qux
+Debugger entered--Lisp error: (void-variable qux)
+
+ELISP> (setf q 'q)
+q
+
+ELISP> qux
+q
+
+
+** 3. Alias is declared automatically to be a special variable
+ELISP> (special-variable-p 'q)
+t
+
+ELISP> (special-variable-p 'qux)
+t
+
+ELISP> (let ((some-symbol (make-symbol "something")))
+         (setf some-symbol 'some-symbol)
+         (defvaralias 's 'something))
+something
+
+ELISP> (special-variable-p 'some-symbol)
+t
+
+ELISP> (special-variable-p 's)
+t
+
+ELISP> s
+some-symbol
+
+ELISP> some-symbol
+Debugger entered--Lisp error: (void-variable some-symbol)
+
+Obviosly setting an alias to a lexical variable is meaningless since the lexical
+context is lost, but basically says that lexical variables are global defvars.
+
+** 4. Defvaring a defaliased variable or base variable have no effect on either alias or base variable
+ELISP> (defvaralias 'bar 'foo)
+foo
+
+ELISP> bar
+bar
+
+ELISP> foo
+bar
+
+ELISP> (defvar bar "bar")
+bar
+
+ELISP> bar
+bar
+
+ELISP> foo
+bar
+
+ELISP> (defvar foo "foo")
+foo
+
+ELISP> foo
+bar
+
+ELISP> bar
+bar
+
+** 5. Aliases are used just like ordinary symbols, i.e. no special API to manipulate their slots
